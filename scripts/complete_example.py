@@ -1,3 +1,5 @@
+import uuid
+
 import solara
 from solara_state import BaseState, StateField, get_state
 from typing import List
@@ -15,7 +17,7 @@ class TodoState(BaseState):
     filter_status: str = StateField(default="all")
     new_item_text: str = StateField(default="")
 
-    @field_validator('filter_status')
+    @field_validator("filter_status")
     @classmethod
     def validate_status(cls, v):
         if v not in ["all", "active", "completed"]:
@@ -38,17 +40,18 @@ def Page():
             new_todo = TodoItem(
                 text=new_item_text.value.strip(),
                 completed=False,
-                id=len(items.value)
+                id=uuid.uuid4().hex,
             )
             items.value = items.value + [new_todo]
             new_item_text.value = ""
 
     # Filter items
     filtered_items = [
-        item for item in items.value
-        if filter_status.value == "all" or
-           (filter_status.value == "active" and not item.completed.value) or
-           (filter_status.value == "completed" and item.completed.value)
+        item
+        for item in items.value
+        if filter_status.value == "all"
+        or (filter_status.value == "active" and not item.completed.value)
+        or (filter_status.value == "completed" and item.completed.value)
     ]
 
     with solara.Column():
@@ -57,7 +60,9 @@ def Page():
         # Add new item
         with solara.Row():
             solara.InputText("Add item...", value=new_item_text)
-            solara.Button("Add", on_click=add_item, disabled=not new_item_text.value.strip())
+            solara.Button(
+                "Add", on_click=add_item, disabled=not new_item_text.value.strip()
+            )
 
         # Filter buttons
         with solara.Row():
@@ -66,7 +71,7 @@ def Page():
                 solara.Button(
                     status.title(),
                     color=color,
-                    on_click=lambda s=status: setattr(filter_status, 'value', s)
+                    on_click=lambda s=status: setattr(filter_status, "value", s),
                 )
 
         # Todo items
@@ -77,24 +82,28 @@ def Page():
                     todo_item.completed.value = value
 
                 solara.Checkbox(
-                    label=item.text.value,
-                    value=item.completed,
-                    on_value=on_toggle
+                    label=item.text.value, value=item.completed, on_value=on_toggle
                 )
 
                 # Editable text
-                solara.InputText(label=item.text.value, value=item.text, style="margin-left: 10px")
+                solara.InputText(
+                    label=item.text.value, value=item.text, style="margin-left: 10px"
+                )
 
         # Stats
         total = len(items.value)
         completed_count = sum(1 for item in items.value if item.completed.value)
-        solara.Text(f"Total: {total}, Completed: {completed_count}, Active: {total - completed_count}")
+        solara.Text(
+            f"Total: {total}, Completed: {completed_count}, Active: {total - completed_count}"
+        )
 
         # Clear completed
         def clear_completed():
             items.value = [item for item in items.value if not item.completed.value]
 
-        solara.Button("Clear Completed", on_click=clear_completed, disabled=completed_count == 0)
+        solara.Button(
+            "Clear Completed", on_click=clear_completed, disabled=completed_count == 0
+        )
 
     @solara.lab.computed
     def state_dict():
@@ -102,7 +111,10 @@ def Page():
         return state.to_dict()
 
     with solara.Column():
-        solara.Text(str(state_dict.value), style="margin-top: 20px; font-family: monospace; white-space: pre-wrap;")
+        solara.Text(
+            str(state_dict.value),
+            style="margin-top: 20px; font-family: monospace; white-space: pre-wrap;",
+        )
 
 
 # # Run the app
