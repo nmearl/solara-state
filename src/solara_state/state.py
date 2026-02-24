@@ -59,21 +59,35 @@ class ReactiveDescriptor(Generic[T]):
                 finally:
                     _syncing[0] = False
 
-        ref.subscribe(sync_to_model)
+        disposer = ref.subscribe(sync_to_model)
+
+        # Store the disposer so __set__ can temporarily remove the subscription
+        if not hasattr(instance, "_sync_disposers"):
+            instance.__dict__["_sync_disposers"] = {}
+        instance.__dict__["_sync_disposers"][self.field_name] = (
+            sync_to_model,
+            disposer,
+        )
+
         self._ref_cache[instance] = ref
         return ref
 
     def __set__(self, instance, value: T):
-        # Update field values first
         instance._field_values[self.field_name] = value
-        # Update pydantic's __dict__ directly to avoid recursion
         instance.__dict__[self.field_name] = value
 
-        # Update cached ref if it exists, but avoid triggering sync callback
         if instance in self._ref_cache:
             ref = self._ref_cache[instance]
-            # Use the reactive's internal method to avoid triggering subscribers
-            ref._storage.set(value)
+            sync_disposers = instance.__dict__.get("_sync_disposers", {})
+
+            if self.field_name in sync_disposers:
+                sync_fn, disposer = sync_disposers[self.field_name]
+                disposer()  # Temporarily remove subscriber
+                ref.value = value
+                new_disposer = ref.subscribe(sync_fn)  # Re-subscribe
+                sync_disposers[self.field_name] = (sync_fn, new_disposer)
+            else:
+                ref.value = value
 
 
 def StateField(default: T = ..., **kwargs) -> T:
