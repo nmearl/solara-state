@@ -9,7 +9,7 @@ from pydantic import field_validator
 class TodoItem(BaseState):
     text: str = StateField(default="")
     completed: bool = StateField(default=False)
-    id: int = StateField(default=0)
+    id: str = StateField(default="")
 
 
 class TodoState(BaseState):
