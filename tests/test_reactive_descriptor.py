@@ -25,7 +25,7 @@ class TestReactiveDescriptor:
         
         assert isinstance(ref, solara.Reactive)
         assert ref.value == 10
-        assert id(instance) in descriptor._ref_cache
+        assert instance in descriptor._ref_cache
     
     def test_descriptor_set_updates_field_values_and_ref(self):
         """Test that __set__ updates both field values and cached ref"""
