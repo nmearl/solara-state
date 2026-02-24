@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 import solara
 import solara.lab
 from solara import Reactive
+import weakref
 
 T = TypeVar('T')
 
@@ -13,17 +14,15 @@ class ReactiveDescriptor(Generic[T]):
     def __init__(self, field_name: str, default_value: T):
         self.field_name = field_name
         self.default_value = default_value
-        self._ref_cache: Dict[int, Reactive[T]] = {}
+        self._ref_cache: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 
     def __get__(self, instance, owner) -> Reactive[T]:
         if instance is None:
             return self
 
-        instance_id = id(instance)
-
         # Return cached Ref if it exists
-        if instance_id in self._ref_cache:
-            return self._ref_cache[instance_id]
+        if instance in self._ref_cache:
+            return self._ref_cache[instance]
 
         # Get current value from field values
         current_value = instance._field_values.get(self.field_name, self.default_value)
@@ -40,7 +39,7 @@ class ReactiveDescriptor(Generic[T]):
         # Watch for changes and sync to model
         ref.subscribe(sync_to_model)
 
-        self._ref_cache[instance_id] = ref
+        self._ref_cache[instance] = ref
         return ref
 
     def __set__(self, instance, value: T):
@@ -50,9 +49,8 @@ class ReactiveDescriptor(Generic[T]):
         instance.__dict__[self.field_name] = value
 
         # Update cached ref if it exists, but avoid triggering sync callback
-        instance_id = id(instance)
-        if instance_id in self._ref_cache:
-            ref = self._ref_cache[instance_id]
+        if instance in self._ref_cache:
+            ref = self._ref_cache[instance]
             # Use the reactive's internal method to avoid triggering subscribers
             ref._storage.set(value)
 
@@ -92,6 +90,7 @@ class BaseStateMeta(type(BaseModel)):
 
 class BaseState(BaseModel, metaclass=BaseStateMeta):
     """Base class for reactive state objects."""
+    model_config = {"arbitrary_types_allowed": True}
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -116,6 +115,12 @@ class BaseState(BaseModel, metaclass=BaseStateMeta):
         else:
             # Otherwise, use normal pydantic setattr
             super().__setattr__(name, value)
+
+    def __hash__(self):
+        return id(self)
+
+    def __eq__(self, other):
+        return self is other
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert state to dictionary."""
