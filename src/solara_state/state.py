@@ -4,8 +4,9 @@ import solara
 import solara.lab
 from solara import Reactive
 import weakref
+import warnings
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class ReactiveDescriptor(Generic[T]):
@@ -20,25 +21,45 @@ class ReactiveDescriptor(Generic[T]):
         if instance is None:
             return self
 
-        # Return cached Ref if it exists
         if instance in self._ref_cache:
             return self._ref_cache[instance]
 
-        # Get current value from field values
         current_value = instance._field_values.get(self.field_name, self.default_value)
-
-        # Create new reactive and cache it
         ref = solara.reactive(current_value)
 
-        # Set up bidirectional sync
+        # Weak reference avoids keeping the instance alive (fixes GC / memory leak)
+        instance_ref = weakref.ref(instance)
+        _syncing = [False]  # list so the nested function can mutate it
+
         def sync_to_model(new_value):
-            instance._field_values[self.field_name] = new_value
-            # Update pydantic's __dict__ directly to avoid recursion
-            instance.__dict__[self.field_name] = new_value
+            if _syncing[0]:
+                return
+            inst = instance_ref()
+            if inst is None:
+                return
 
-        # Watch for changes and sync to model
+            # Validate via Pydantic; raises ValidationError on bad values
+            validated = inst.__class__.model_validate(
+                {**inst._field_values, self.field_name: new_value}
+            )
+
+            # Use _field_values on the validated instance, which
+            # would return a Reactive via the descriptor
+            clean_value = validated._field_values[self.field_name]
+
+            inst._field_values[self.field_name] = clean_value
+            inst.__dict__[self.field_name] = clean_value
+
+            # If the validator transformed the value (e.g. lowercased a string),
+            # sync the corrected value back to the reactive without re-entering
+            if clean_value != new_value:
+                _syncing[0] = True
+                try:
+                    ref.value = clean_value
+                finally:
+                    _syncing[0] = False
+
         ref.subscribe(sync_to_model)
-
         self._ref_cache[instance] = ref
         return ref
 
@@ -58,12 +79,14 @@ class ReactiveDescriptor(Generic[T]):
 def StateField(default: T = ..., **kwargs) -> T:
     """Create a reactive state field with Pydantic validation."""
     # Only pass default if it's explicitly provided and default_factory isn't
-    if default is not ... and 'default_factory' not in kwargs:
-        return Field(default=default, **kwargs)
-    elif 'default_factory' in kwargs:
+    if "default_factory" in kwargs:
         return Field(**kwargs)
+    elif default is not ...:
+        return Field(default=default, **kwargs)
     else:
-        return Field(default=None, **kwargs)
+        # If no default provied, let Pydantic treat it as a required field
+        # rather than silently coercing to None
+        return Field(**kwargs)
 
 
 class BaseStateMeta(type(BaseModel)):
@@ -74,12 +97,14 @@ class BaseStateMeta(type(BaseModel)):
         new_class = super().__new__(cls, name, bases, namespace)
 
         # Only process if this class has pydantic fields
-        if hasattr(new_class, 'model_fields') and new_class.model_fields:
+        if hasattr(new_class, "model_fields") and new_class.model_fields:
             # Get field information from pydantic
             for field_name, field_info in new_class.model_fields.items():
-                if not field_name.startswith('_'):
+                if not field_name.startswith("_"):
                     # Get default value from field definition
-                    default_value = field_info.default if field_info.default is not ... else None
+                    default_value = (
+                        field_info.default if field_info.default is not ... else None
+                    )
 
                     # Create reactive descriptor
                     descriptor = ReactiveDescriptor(field_name, default_value)
@@ -90,6 +115,7 @@ class BaseStateMeta(type(BaseModel)):
 
 class BaseState(BaseModel, metaclass=BaseStateMeta):
     """Base class for reactive state objects."""
+
     model_config = {"arbitrary_types_allowed": True}
 
     def __init__(self, **data):
@@ -102,7 +128,9 @@ class BaseState(BaseModel, metaclass=BaseStateMeta):
 
     def __setattr__(self, name, value):
         # If it's a field with a descriptor, validate first then use the descriptor
-        if hasattr(self.__class__, name) and isinstance(getattr(self.__class__, name), ReactiveDescriptor):
+        if hasattr(self.__class__, name) and isinstance(
+            getattr(self.__class__, name), ReactiveDescriptor
+        ):
             # Run pydantic validation first
             if name in self.__class__.model_fields:
                 # Create a temporary dict with the new value to validate, using actual values not reactive objects
@@ -134,7 +162,13 @@ class BaseState(BaseModel, metaclass=BaseStateMeta):
     def update(self, **kwargs):
         """Update multiple state fields at once."""
         for key, value in kwargs.items():
-            if key in self.__class__.model_fields:
+            if key not in self.__class__.model_fields:
+                warnings.warn(
+                    f"'{key}' is not a field of {self.__class__.__name__} and will be ignored.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            else:
                 setattr(self, key, value)
 
     def reset(self):
