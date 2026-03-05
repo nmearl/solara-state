@@ -90,12 +90,12 @@ state.reset()
 
 #### Methods
 
-| Method | Description |
-|---|---|
-| `update(**kwargs)` | Set multiple fields at once. Issues a `UserWarning` for any unrecognised field names. |
-| `reset()` | Reset all fields to their declared defaults. |
-| `to_dict()` | Serialize state to a plain dictionary (delegates to `model_dump()`). |
-| `from_dict(data)` | Class method. Deserialize state from a dictionary (delegates to `model_validate()`). |
+| Method | Description                                                                           |
+|---|---------------------------------------------------------------------------------------|
+| `update(**kwargs)` | Set multiple fields at once. Issues a `UserWarning` for any unrecognized field names. |
+| `reset()` | Reset all fields to their declared defaults.                                          |
+| `to_dict()` | Serialize state to a plain dictionary (delegates to `model_dump()`).                  |
+| `from_dict(data)` | Class method. Deserialize state from a dictionary (delegates to `model_validate()`).  |
 
 ### `StateField`
 
@@ -150,7 +150,7 @@ class UserState(BaseState):
 
     @field_validator('email')
     @classmethod
-    def normalise_email(cls, v):
+    def normalize_email(cls, v):
         if v and '@' not in v:
             raise ValueError('Invalid email address')
         return v.lower()  # Coercion is applied automatically

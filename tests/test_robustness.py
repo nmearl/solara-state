@@ -100,7 +100,7 @@ class TestValidationViaReactiveRefs:
         state.counter.value = 10
         assert state._field_values["counter"] == 10
 
-    def test_validator_normalises_value_via_ref(self):
+    def test_validator_normalizes_value_via_ref(self):
         """Validators that transform values (e.g. lowercase) should apply."""
         state = ValidatedState()
         state.email.value = "User@Example.COM"
@@ -204,14 +204,14 @@ class TestStateFieldDefault:
                 state._field_values.get("required") is not None
             ), "StateField() with no default silently became None"
         except (ValueError, ValidationError):
-            pass  # Correct behaviour: required field raises on missing value
+            pass  # Correct behavior: required field raises on missing value
 
 
 class TestUpdateTypos:
     """Unknown fields in `update` silently ignored."""
 
     def test_update_with_unknown_field_warns(self):
-        """`update` with an unrecognised field name should warn, not silently pass."""
+        """`update` with an unrecognized field name should warn, not silently pass."""
         state = SimpleState()
 
         with pytest.warns(UserWarning, match="typo_field"):
