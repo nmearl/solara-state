@@ -1,5 +1,6 @@
 import pytest
 from solara_state import StateManager, BaseState, StateField
+from solara_state.manager import GLOBAL_SCOPE
 
 
 class AppState(BaseState):
@@ -24,7 +25,7 @@ class TestStateManager:
         state = manager.get_state(AppState)
         
         assert isinstance(state, AppState)
-        assert AppState in manager._states
+        assert AppState in manager._states[GLOBAL_SCOPE]
         assert state._field_values['value'] == 1
     
     def test_get_state_returns_same_instance(self):
@@ -65,7 +66,7 @@ class TestStateManager:
         manager.get_state(AppState)
         manager.get_state(UserState)
         
-        assert len(manager._states) == 2
+        assert len(manager._states[GLOBAL_SCOPE]) == 2
         
         manager.clear_all()
         

@@ -8,6 +8,21 @@ import warnings
 T = TypeVar("T")
 
 
+def current_kernel_context():
+    """
+    Return the active Solara virtual kernel context, or None. Context
+    is preserved when using a server.
+    """
+    if not solara._using_solara_server():
+        return None
+
+    from solara.server import kernel_context
+
+    if not kernel_context.has_current_context():
+        return None
+    return kernel_context.get_current_context()
+
+
 class ReactiveDescriptor(Generic[T]):
     """Descriptor that wraps field access in Solara Ref objects."""
 
@@ -60,16 +75,33 @@ class ReactiveDescriptor(Generic[T]):
 
         disposer = ref.subscribe(sync_to_model)
 
-        # Store the disposer so __set__ can temporarily remove the subscription
+        # Store the syncing flag so __set__ can push already-validated values
+        # to the ref without re-entering sync_to_model
         if not hasattr(instance, "_sync_disposers"):
             instance.__dict__["_sync_disposers"] = {}
         instance.__dict__["_sync_disposers"][self.field_name] = (
-            sync_to_model,
+            _syncing,
             disposer,
         )
 
+        # Unsubscribe when the Solara session that owns this ref shuts down.
+        # Registered after subscribing so it runs before Solara's leak check.
+        context = current_kernel_context()
+        if context is not None:
+            context.on_close(lambda: self._dispose(instance_ref()))
+
         self._ref_cache[instance] = ref
         return ref
+
+    def _dispose(self, instance):
+        """Remove the instance's sync subscription and cached ref for this field."""
+        if instance is None:
+            return
+        entry = instance.__dict__.get("_sync_disposers", {}).pop(self.field_name, None)
+        if entry is not None:
+            _, disposer = entry
+            disposer()
+        self._ref_cache.pop(instance, None)
 
     def __set__(self, instance, value: T):
         instance._field_values[self.field_name] = value
@@ -80,11 +112,12 @@ class ReactiveDescriptor(Generic[T]):
             sync_disposers = instance.__dict__.get("_sync_disposers", {})
 
             if self.field_name in sync_disposers:
-                sync_fn, disposer = sync_disposers[self.field_name]
-                disposer()  # Temporarily remove subscriber
-                ref.value = value
-                new_disposer = ref.subscribe(sync_fn)  # Re-subscribe
-                sync_disposers[self.field_name] = (sync_fn, new_disposer)
+                syncing, _ = sync_disposers[self.field_name]
+                syncing[0] = True  # Value is already validated; skip sync_to_model
+                try:
+                    ref.value = value
+                finally:
+                    syncing[0] = False
             else:
                 ref.value = value
 

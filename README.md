@@ -40,7 +40,7 @@ def Counter():
 - **Reactive properties**: field access returns `solara.Reactive` objects that automatically trigger UI re-renders
 - **Pydantic integration**: full validation, type coercion, and serialization; validators run on every write including writes through reactive refs
 - **Bidirectional sync**: changes made via a reactive ref or via direct attribute assignment stay in sync
-- **Global state**: thread-safe singleton management with `get_state()`
+- **Per-session state**: `get_state()` gives each browser session its own instance, thread-safely
 - **Local state**: instantiate `BaseState` directly for component-scoped state
 - **Memory safe**: descriptor caches use `WeakKeyDictionary` so state instances are garbage collected normally
 
@@ -119,15 +119,20 @@ All standard Pydantic `Field` keyword arguments are supported and forwarded.
 
 ### `StateManager`
 
-Thread-safe singleton registry for global state instances.
+Thread-safe registry that keeps one instance of each state class per session.
+
+Under `solara run`, every browser session (virtual kernel) gets its own instances, so one
+user's changes are never visible to another. A session's instances are released when
+its kernel shuts down. Outside a Solara server session (scripts, Jupyter notebooks, tests)
+there is a single shared scope.
 
 ```python
 from solara_state import StateManager, get_state, reset_state, clear_all_states
 
-# Module-level helpers use a shared global manager
-state = get_state(AppState)       # Get or create singleton
-reset_state(AppState)             # Reset to defaults (instance is kept)
-clear_all_states()                # Remove all managed instances
+# Module-level helpers use a shared default manager
+state = get_state(AppState)       # Get or create the current session's instance
+reset_state(AppState)             # Reset the current session's instance to defaults
+clear_all_states()                # Remove all managed instances, in every session
 
 # Or use your own manager for isolated scopes (e.g. testing)
 manager = StateManager()
@@ -137,6 +142,10 @@ manager.clear_all()
 ```
 
 `StateManager` is safe to call from multiple threads simultaneously.
+
+Avoid sharing a single `BaseState` instance between sessions yourself (for example, one created at
+module level): Solara keeps a separate reactive value per session, so the instance's reactive refs and
+its Pydantic model would drift apart. Use `get_state()` or component-scoped state instead.
 
 ## Examples
 
