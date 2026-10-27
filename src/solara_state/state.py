@@ -1,7 +1,6 @@
-from typing import Any, Dict, Optional, Type, TypeVar, Generic, get_type_hints
+from typing import Any, Dict, TypeVar, Generic
 from pydantic import BaseModel, Field
 import solara
-import solara.lab
 from solara import Reactive
 import weakref
 import warnings
