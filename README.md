@@ -196,12 +196,14 @@ restored = AppState.from_dict(data)
 
 ### Local (component-scoped) state
 
-Each component instance gets its own independent state when you instantiate directly instead of using `get_state`:
+Each component instance gets its own independent state when you instantiate directly instead of using `get_state`.
+Wrap the construction in `solara.use_memo` so the instance survives re-renders (otherwise every render
+would create a fresh state and discard your changes):
 
 ```python
 @solara.component
 def LocalCounter():
-    state = CounterState(count=10)  # not a singleton
+    state = solara.use_memo(lambda: CounterState(count=10), [])  # not shared
 
     with solara.Column():
         solara.Text(f"Local count: {state.count.value}")
