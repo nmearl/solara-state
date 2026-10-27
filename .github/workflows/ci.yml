@@ -23,16 +23,19 @@ jobs:
             python-version: "3.14t"
 
     env:
-      # Request the exact build: a trailing "t" means free-threaded, otherwise
-      # pin the GIL build so uv never picks a free-threaded interpreter instead.
-      # This also overrides .python-version, which would otherwise win.
-      UV_PYTHON: ${{ endsWith(matrix.python-version, 't') && matrix.python-version || format('{0}+gil', matrix.python-version) }}
+      # Overrides .python-version, which would otherwise win. A trailing "t"
+      # requests a free-threaded build; uv downloads GIL builds otherwise, and
+      # the "Check interpreter build" step below verifies which one we got.
+      UV_PYTHON: ${{ matrix.python-version }}
 
     steps:
       - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v10
+        # setup-uv no longer publishes floating major tags, so pin a commit
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.1"
 
       - name: Install dependencies
         run: uv sync --locked --all-groups
