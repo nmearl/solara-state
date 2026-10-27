@@ -3,6 +3,8 @@ name = "solara-state"
 version = "0.1.0"
 description = "State management for Solara apps"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "Nicholas Earl", email = "contact@nicholasearl.me" }
 ]
