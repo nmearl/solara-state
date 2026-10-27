@@ -15,27 +15,40 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.13"]
+        python-version: ["3.13", "3.14", "3.15"]
         include:
-          # Also test free-threaded Python 3.13 on Linux (GIL disabled)
+          # Also test free-threaded Python on Linux (GIL disabled)
           # This is important for catching thread-safety issues in StateManager
           - os: ubuntu-latest
-            python-version: "3.13t"
+            python-version: "3.14t"
+
+    env:
+      # Request the exact build: a trailing "t" means free-threaded, otherwise
+      # pin the GIL build so uv never picks a free-threaded interpreter instead.
+      # This also overrides .python-version, which would otherwise win.
+      UV_PYTHON: ${{ endsWith(matrix.python-version, 't') && matrix.python-version || format('{0}+gil', matrix.python-version) }}
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          allow-prereleases: true
+      - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v10
 
       - name: Install dependencies
-        run: uv sync --all-groups
+        run: uv sync --locked --all-groups
+
+      - name: Check interpreter build
+        shell: bash
+        run: |
+          uv run python - "${{ matrix.python-version }}" <<'EOF'
+          import sys, sysconfig
+          import solara_state  # GIL may be re-enabled by extension modules on import
+          free_threaded = bool(sysconfig.get_config_var("Py_GIL_DISABLED"))
+          gil_enabled = getattr(sys, "_is_gil_enabled", lambda: True)()
+          print(sys.version, "| free-threaded build:", free_threaded, "| GIL enabled:", gil_enabled)
+          want_free_threaded = sys.argv[1].endswith("t")
+          sys.exit(0 if free_threaded == want_free_threaded and gil_enabled != want_free_threaded else 1)
+          EOF
 
       - name: Run tests
         run: uv run pytest tests/ -v --tb=short
