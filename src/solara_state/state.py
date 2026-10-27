@@ -150,7 +150,9 @@ class BaseState(BaseModel, metaclass=BaseStateMeta):
                 temp_dict = self._field_values.copy()
                 temp_dict[name] = value
                 # This will raise ValidationError if invalid
-                self.__class__(**temp_dict)
+                validated = self.__class__.model_validate(temp_dict)
+                # Store the coerced/transformed value, not the raw input
+                value = validated._field_values[name]
 
             getattr(self.__class__, name).__set__(self, value)
         else:

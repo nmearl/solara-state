@@ -1,6 +1,6 @@
 import pytest
 from typing import Optional
-from pydantic import ValidationError
+from pydantic import ValidationError, field_validator
 import solara
 from solara_state import BaseState, StateField
 
@@ -113,3 +113,52 @@ class TestBaseState:
         """Test that Pydantic validation works"""
         with pytest.raises(ValidationError):
             SampleState(counter="invalid")
+
+class NormalizingState(BaseState):
+    count: int = StateField(default=0)
+    email: str = StateField(default="")
+
+    @field_validator('email')
+    @classmethod
+    def lowercase_email(cls, v):
+        return v.lower()
+
+
+class TestAttributeAssignmentCoercion:
+
+    def test_attribute_assignment_coerces_type(self):
+        """Test that direct assignment stores the coerced value, not the raw input"""
+        state = NormalizingState()
+
+        state.count = "5"
+
+        assert state._field_values['count'] == 5
+        assert state.count.value == 5
+        assert state.to_dict()['count'] == 5
+
+    def test_attribute_assignment_applies_validator_transform(self):
+        """Test that direct assignment stores the validator's transformed value"""
+        state = NormalizingState()
+
+        state.email = "User@Example.COM"
+
+        assert state._field_values['email'] == "user@example.com"
+        assert state.email.value == "user@example.com"
+
+    def test_update_applies_coercion(self):
+        """Test that update() stores coerced and transformed values"""
+        state = NormalizingState()
+
+        state.update(count="7", email="A@B.COM")
+
+        assert state.to_dict() == {'count': 7, 'email': "a@b.com"}
+
+    def test_attribute_and_ref_assignment_agree(self):
+        """Test that both write paths produce identical stored values"""
+        via_attr = NormalizingState()
+        via_ref = NormalizingState()
+
+        via_attr.email = "MiXeD@Case.com"
+        via_ref.email.value = "MiXeD@Case.com"
+
+        assert via_attr.to_dict() == via_ref.to_dict()
